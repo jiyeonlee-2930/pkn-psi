@@ -1,0 +1,9 @@
+[project]
+name = "pkn-psi"
+version = "0.1.0"
+description = "PTHash-indexed k-out-of-N OT private set intersection"
+requires-python = ">=3.10"
+dependencies = ["numpy>=1.26", "psutil>=5.9"]
+
+[tool.pytest.ini_options]
+testpaths = ["."]

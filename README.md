@@ -1,100 +1,119 @@
-# pkn-psi
 # PKN-PSI
 
-Reference implementation of the protocol described in:
+PTHash 최소 완전 해싱과 k-out-of-N 무의식적 전송을 결합한 크기 불균형 적응형 다자간 사적 집합 교집합 프로토콜의 참조 구현 및 실험 도구.
 
-> **A Minimal Perfect Hashing-Based Multi-Party PSI Protocol for Size-Imbalanced Datasets**
-> Jiyeon Lee, Department of AI Information Security, Halla University
-
-## Overview
-
-PKN-PSI is a multi-party private set intersection (PSI) protocol for settings in which
-participant set sizes are highly imbalanced. It replaces cuckoo hashing with a minimal
-perfect hash function (MPHF) and designates the holder of the smallest set as the receiver,
-so that the number of oblivious transfer instances scales with the smallest set rather than
-the largest. Partial-intersection leakage is prevented by zero-sharing.
-
-Security is analyzed in the semi-honest model.
-
-## Status
-
-Code is being migrated to this repository and will be published here in full.
-
-## Requirements
-
-- Python 3.10 or later
-
-Dependencies are listed in `requirements.txt`.
-
-## Installation
+## 설치
 
 ```bash
-git clone https://github.com/<username>/pkn-psi.git
-cd pkn-psi
+git clone <repo> && cd pkn-psi
+python3 -m venv .venv
+source .venv/bin/activate          # Windows: .venv\Scripts\activate
 pip install -r requirements.txt
 ```
 
-## Repository layout
+VS Code에서는 `Python: Select Interpreter`로 `.venv`를 선택하면 `.vscode/settings.json`이 pytest를 자동 인식합니다. `F5`로 `.vscode/launch.json`의 실행 구성을 바로 쓸 수 있습니다.
 
-```
-pkn-psi/
-├── pknpsi/                  # Protocol implementation
-│   ├── __init__.py
-│   ├── mphf.py              # Minimal perfect hash function (PTHash)
-│   ├── cuckoo.py            # Cuckoo hashing baseline
-│   ├── oprf.py              # OPRF over OT extension
-│   ├── protocols.py         # PKN-PSI and baseline protocols
-│   ├── datagen.py           # Synthetic dataset generation
-│   └── metrics.py           # Symmetric-key ops, memory, transmitted bytes
-├── experiments/
-│   ├── run_main.py          # Main comparison
-│   ├── run_ablation.py      # Ablation studies A1-A4
-│   ├── plot_delta.py        # Figure: cost vs. delta
-│   ├── plot_example1.py     # Figure: Example 1 illustration
-│   └── find_seed.py         # MPHF seed search utility
-├── results/                 # Generated tables and figures (git-ignored)
-├── tests/
-│   └── test_protocol.py
-├── requirements.txt
-├── pyproject.toml
-├── .gitignore
-├── LICENSE
-└── README.md
-```
-
-## Reproducing the results
-
-Each script writes its output to `results/`.
-
-| Paper item | Command |
-|---|---|
-| Main comparison tables | `python -m experiments.run_main` |
-| Ablation tables (A1-A4) | `python -m experiments.run_ablation` |
-| Figure: cost vs. delta | `python -m experiments.plot_delta` |
-| Figure: Example 1 | `python -m experiments.plot_example1` |
-
-To run the test suite:
+## 실행
 
 ```bash
-pytest
+pytest -q                      # 정확도 및 정리 검증 (27개, 약 2분)
+python3 experiments.py         # 절제 실험 A1~A4, results.csv 생성
+python3 experiments.py --scale # E2 확장성 추가
 ```
 
-## Data
+## 구조
 
-No datasets are distributed. All experiments use synthetic sets of randomly generated
-128-bit integers, with size profiles modeled on published institutional statistics.
-Generation is handled by `pknpsi/datagen.py`, so all reported results are reproducible
-from source.
+```
+pknpsi/
+  mphf.py        PTHash 방식 MPHF. 파티션 분배 → 파일럿 탐색 → 자유 슬롯 재배치
+  cuckoo.py      뻐꾸기 해싱 + 스태시. 베이스라인 비닝 구조
+  oprf.py        KKRT 방식 일괄 OPRF (OT 확장), 영값 공유
+  protocols.py   PKN-PSI와 베이스라인
+  datagen.py     크기 프로파일과 교집합 비율을 통제하는 데이터 생성
+  metrics.py     계수기
+experiments.py   A1~A4, E2
+tests/           pytest 스위트
+```
 
-## Citation
+## 설계 원칙
 
-To be added upon publication.
+**단일 암호 계층.** 두 프로토콜이 같은 `OPRFEngine`을 호출한다. 측정된 차이는 비닝 구조와 수신자 지정에서만 발생하며 암호 계층에서는 발생하지 않는다.
 
-## Funding
+**이중 MPHF 색인.** 모든 참여자가 자신의 MPHF를 공개한다.
 
-This work was supported by the Korea Internet & Security Agency (KISA, RS-2026-25527707)
-and the ANCHOR program (2026-ANCHOR-10-008).
+- 수신자의 `h_*`가 **OPRF 행 번호**를 결정한다. 송신자가 `h_*(y)`를 계산해 어느 행에서 평가할지 안다.
+- 각 송신자의 `h_j`가 **페이로드 슬롯**을 결정한다. 수신자가 `h_j(x)`로 정확히 한 칸만 읽는다.
 
-## License
+두 번째 층이 없으면, 수신자 버킷이 m_min개인데 송신자 원소가 m_max개일 때 버킷당 평균 δ개가 충돌하고 참여자별 후보를 교차 조합해야 하므로 δⁿ으로 폭발한다. 송신자 MPHF가 이 모호성을 원천 제거한다.
 
-To be added.
+**보수적 베이스라인.** 베이스라인에도 동일한 페이로드 색인을 부여했다. 발표된 뻐꾸기 구성에는 없는 이점이므로, 여기서 측정된 감소폭은 모두 하한이다.
+
+**측정의 독립성.** 주 지표인 OT 인스턴스 수, 배치 횟수, 전송 바이트는 구현 언어에 무관하다. 초 단위 시간과 피크 메모리는 보조 지표로만 기록한다.
+
+## 계측 항목
+
+| 필드 | 의미 |
+|---|---|
+| `ot_instances` | OT 확장 행 수 = 수신자 버킷 수 × 송신자 수 |
+| `base_ots` | 공개키 연산 수 (양 프로토콜 동일) |
+| `sym_ops` | PRF·해시 호출 수 |
+| `placements` | 송신자 측 버킷 배치 횟수 |
+| `bins` / `stash` | 수신자 테이블 크기, 스태시 점유량 |
+| `bytes_r2s` | 수신자→송신자, OT 확장 행렬 |
+| `bytes_s2r` | 송신자→수신자, OPRF 출력 |
+| `bytes_index` | 공개된 MPHF 브로드캐스트 |
+
+## 검증된 결과
+
+### A1 — 비닝 구조 교체 (정리 2)
+
+| n | m_min | m_max | OT 뻐꾸기 | OT MPHF | 감소 | 배치 뻐꾸기 | 배치 MPHF | 감소 | 전송량 감소 |
+|---|---|---|---|---|---|---|---|---|---|
+| 3 | 2000 | 2000 | 5080 | 4000 | 21.3% | 12000 | 4000 | 66.7% | 30.5% |
+| 3 | 2000 | 8000 | 5080 | 4000 | 21.3% | 48000 | 16000 | 66.7% | 44.4% |
+| 5 | 2000 | 2000 | 10160 | 8000 | 21.3% | 24000 | 8000 | 66.7% | 30.8% |
+| 5 | 2000 | 8000 | 10160 | 8000 | 21.3% | 96000 | 32000 | 66.7% | 44.7% |
+
+이론값 21%와 1/3이 그대로 재현된다. 불균형이 커질수록 전송량 감소가 30%에서 44%로 확대되는데, 송신자 원소가 많을수록 3중 배치 제거 효과가 커지기 때문이다.
+
+### A2 — 수신자 지정 (정리 3)
+
+| δ | OT 수신자=최대 | OT 수신자=최소 | 실측 비율 | 예측 1.27δ |
+|---|---|---|---|---|
+| 1 | 2540 | 2000 | 1.27 | 1.27 |
+| 2 | 5080 | 2000 | 2.54 | 2.54 |
+| 10 | 25400 | 2000 | 12.70 | 12.70 |
+| 50 | 127000 | 2000 | 63.50 | 63.50 |
+
+소수점 둘째 자리까지 일치한다. 정리 3의 경계가 타이트함을 뒷받침한다.
+
+### A3 — 참여자 수 확장
+
+| n | OT 뻐꾸기 | OT MPHF | 감소 | 전송량 뻐꾸기 | 전송량 MPHF | 감소 |
+|---|---|---|---|---|---|---|
+| 3 | 2540 | 2000 | 21.3% | 344,740 | 184,367 | 46.5% |
+| 5 | 5080 | 4000 | 21.3% | 696,980 | 370,687 | 46.8% |
+| 10 | 11,430 | 9000 | 21.3% | 1,585,080 | 839,065 | 47.1% |
+| 20 | 24,130 | 19,000 | 21.3% | 3,381,905 | 1,782,852 | 47.3% |
+
+감소율이 n에 무관하게 유지된다. 참여자가 늘어도 이점이 희석되지 않는다.
+
+### A4 — 불균형 구간
+
+| δ | ε | OT 감소 | 전송량 감소 | 피크 메모리 감소 |
+|---|---|---|---|---|
+| 1 | 1.0000 | 21.3% | 30.4% | 23.8% |
+| 2 | 0.8333 | 21.3% | 36.6% | 19.8% |
+| 10 | 0.7000 | 21.3% | 53.3% | 18.3% |
+
+OT 감소는 δ에 무관한 상수이고(정리 2), δ 의존 이득은 수신자 지정에서 나온다(정리 3, A2 참조).
+
+## 알려진 한계
+
+**구축 속도.** 순수 파이썬 MPHF 구축은 100k 키에 약 4.5초다. 2²⁴ 원소 실험은 비현실적이므로 확장성 실험 E2의 상한을 2¹⁸로 둔다. 더 큰 규모가 필요하면 `pthash` C++ 바인딩을 연결할 수 있다.
+
+**bits/key.** 본 프로토타입은 파일럿을 압축 없이 저장하여 3.4~4.0 bits/key를 보인다. PHOBIC은 압축 부호화로 2.11 bits/key를 보고하므로, 여기 수치는 상한이다.
+
+**기저 OT.** 공개키 연산은 계수만 기록하고 실제로 수행하지 않는다. 양 프로토콜에서 동일한 w회이므로 모든 비교에서 상쇄된다.
+
+**적대자 모델.** 준정직 모델만 다룬다. 악의적 적대자에 대한 검증은 구현되어 있지 않다.
