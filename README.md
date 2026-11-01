@@ -132,3 +132,13 @@ tests/           pytest 스위트
 **기저 OT.** 공개키 연산은 계수만 기록하고 실제로 수행하지 않는다. 양 프로토콜에서 동일한 w회이므로 모든 비교에서 상쇄된다.
 
 **적대자 모델.** 준정직 모델만 다룬다. 악의적 적대자에 대한 검증은 구현되어 있지 않다.
+
+
+## Version 4 (final accepted version)
+
+This version corresponds to the final manuscript accepted in *Applied Sciences* (MDPI, 2026).
+
+- Revision experiments: `experiments_rev.py` → `results_rev/`
+- Figure 3 (ablation summary): `plot_fig3.py`
+- Tested with Python 3.11.9
+
