@@ -16,6 +16,7 @@ class Counters:
     sym_ops: int = 0             # PRF / hash invocations
     placements: int = 0          # sender-side bin placements
     build_retries: int = 0       # MPHF pilot-search retries
+    okvs_retries: int = 0        # OKVS re-seeds after a peeling failure
 
     # --- structure ---------------------------------------------------
     bins: int = 0                # receiver table size
@@ -26,6 +27,12 @@ class Counters:
     bytes_r2s: int = 0           # receiver -> sender (OT extension matrix)
     bytes_s2r: int = 0           # sender -> receiver (OPRF outputs)
     bytes_index: int = 0         # broadcast of the published MPHF
+    bytes_baseot: int = 0        # base-OT messages (constant in set sizes)
+
+    # --- wall-clock components (seconds) ------------------------------
+    t_mphf: float = 0.0          # MPHF construction (receiver)
+    t_baseot: float = 0.0        # base OTs (public-key part)
+    t_okvs: float = 0.0          # OKVS encoding (senders)
 
     def add(self, **kw):
         for k, v in kw.items():
@@ -33,7 +40,7 @@ class Counters:
 
     @property
     def bytes_total(self) -> int:
-        return self.bytes_r2s + self.bytes_s2r + self.bytes_index
+        return self.bytes_r2s + self.bytes_s2r + self.bytes_index + self.bytes_baseot
 
     def as_dict(self) -> dict:
         d = asdict(self)

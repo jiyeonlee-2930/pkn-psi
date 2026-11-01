@@ -90,3 +90,58 @@ def test_theorem3_reduction_factor_is_eps_times_delta(delta):
     best = run(ds, protocol="pkn", receiver="min", seed=6)
     ratio = worst.counters.ot_instances / best.counters.ot_instances
     assert ratio == pytest.approx(EPS * delta, rel=0.02)
+
+
+# ------------------------------------------- revision: stash, OKVS, OT
+def test_cuckoo_correct_with_nonempty_stash(monkeypatch):
+    """Receiver elements in the stash must still be found."""
+    import pknpsi.cuckoo as ck
+    monkeypatch.setattr(ck, "MAX_EVICT", 1)        # force stash occupancy
+    ds = make_datasets([400, 900, 900], overlap=0.5, seed=31)
+    r = run(ds, protocol="cuckoo", receiver="min", seed=7)
+    assert r.counters.stash > 0
+    assert r.correct
+
+
+def test_okvs_roundtrip():
+    from pknpsi import okvs
+    rng = np.random.default_rng(5)
+    k = np.unique(rng.integers(0, 2 ** 63, 5000, dtype=np.int64).astype(np.uint64))
+    v = rng.integers(0, 2 ** 50, k.size, dtype=np.int64).astype(np.uint64)
+    table, seed = okvs.encode(k, v, 50)
+    assert (okvs.decode(table, seed, k) == v).all()
+    assert table.size <= int(np.ceil(okvs.EXPANSION * k.size)) + 3
+
+
+def test_base_ot_delivers_chosen_message_only():
+    import secrets
+    from pknpsi.crypto import base_ots
+    pairs = [(secrets.token_bytes(16), secrets.token_bytes(16)) for _ in range(64)]
+    choices = [secrets.randbits(1) for _ in range(64)]
+    out = base_ots(pairs, choices)
+    assert all(o == p[c] for o, p, c in zip(out, pairs, choices))
+    assert all(o != p[1 - c] for o, p, c in zip(out, pairs, choices))
+
+
+def test_oprf_matches_only_on_equal_items():
+    from pknpsi.metrics import Counters
+    from pknpsi.oprf import OPRFEngine
+    rng = np.random.default_rng(9)
+    R = rng.integers(0, 2 ** 63, 64, dtype=np.int64).astype(np.uint64)
+    eng = OPRFEngine(64, 64, Counters())
+    M = eng.receiver_encode(R)
+    same = eng.sender_eval(R, np.arange(64))
+    other = eng.sender_eval(R[::-1].copy(), np.arange(64))
+    assert (same == M).all()
+    assert (other != M).sum() >= 63          # R[::-1] agrees with R at most at one row
+
+
+@pytest.mark.parametrize("delta", [2, 5, 10])
+def test_receiver_designation_isolated_factor_is_delta(delta):
+    """Same binning (cuckoo), only the receiver changes: OT ratio = delta."""
+    ds = make_datasets(imbalanced_sizes(3, 400, delta), 0.3, 24)
+    worst = run(ds, protocol="cuckoo", receiver="max", seed=6)
+    best = run(ds, protocol="cuckoo", receiver="min", seed=6)
+    assert worst.correct and best.correct
+    ratio = worst.counters.ot_instances / best.counters.ot_instances
+    assert ratio == pytest.approx(delta, rel=0.02)
